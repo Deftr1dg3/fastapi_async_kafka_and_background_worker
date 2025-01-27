@@ -1,0 +1,1 @@
+# fastapi_async_kafka_and_background_worker
