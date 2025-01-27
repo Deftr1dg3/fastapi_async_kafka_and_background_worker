@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+/kafka-logs
 
 # C extensions
 *.so
