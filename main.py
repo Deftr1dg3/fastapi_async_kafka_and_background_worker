@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import json
 
+from pydantic import BaseModel, Field, ValidationError, EmailStr, ConfigDict
 from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
 from uuid6 import uuid7
 
@@ -11,8 +12,16 @@ RESPONSE_TOPIC = "response_topic"
 BOOTSTRAP_SERVERS = "localhost:9092"
 GROUP_ID = "fastapi-group"
 
+
+
+# -----------------------------------------------------------------------------
+# Presetting Kafka Producer and Consumer
+# -----------------------------------------------------------------------------
+
 # In-memory store of correlation_id -> Future
 pending_requests = {}
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,6 +29,9 @@ async def lifespan(app: FastAPI):
     Startup: create producer, consumer; start background task.
     Shutdown: stop background task, close consumer & producer.
     """
+    
+    # Actions that will be performed on Startup ---------------------
+    
     producer = AIOKafkaProducer(bootstrap_servers=BOOTSTRAP_SERVERS)
     await producer.start()
 
@@ -39,8 +51,14 @@ async def lifespan(app: FastAPI):
     app.state.consume_task = task
 
     try:
+        # Returns controll to the FastAPI app.
+        # Actually enables endpoint.
         yield
     finally:
+        # Actions that will be performed on Shutdown ---------------------
+        # Get controll back from FastAPI app
+        # once the app execution has been terminated by Ctrl+C
+        # Closes all services
         task.cancel()
         await consumer.stop()
         await producer.stop()
@@ -63,17 +81,35 @@ async def consume_responses(consumer: AIOKafkaConsumer):
     except Exception as e:
         print(f"[consume_responses] Error: {e}")
 
+
+# -----------------------------------------------------------------------------
+# Pydentic model 
+# -----------------------------------------------------------------------------
+
+class InputSchema(BaseModel):
+    input: str
+    
+    # This specific configuration specifies that the 
+    # model should reject any extra fields that are 
+    # not explicitly defined in the model schema.
+    model_config = ConfigDict(extra='forbid')
+    
+
+# -----------------------------------------------------------------------------
+# APP Code 
+# -----------------------------------------------------------------------------
+
 app = FastAPI(lifespan=lifespan)
 
 @app.post("/process")
-async def process_request(payload: dict):
+async def process_request(payload: InputSchema):
     """
     1) Generate correlation_id
     2) Create a Future and store it
     3) Send to Kafka request_topic
     4) Await the Future
     5) Return result
-    """
+    """ 
     correlation_id = str(uuid7())
     loop = asyncio.get_running_loop()
     future = loop.create_future()
@@ -82,7 +118,7 @@ async def process_request(payload: dict):
 
     message = {
         "correlation_id": correlation_id,
-        "payload": payload
+        "input": payload.input
     }
 
     # Send the request to the request_topic

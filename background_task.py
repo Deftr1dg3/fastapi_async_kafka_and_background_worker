@@ -32,10 +32,10 @@ async def main():
         async for msg in consumer:
             data = json.loads(msg.value.decode("utf-8"))
             correlation_id = data["correlation_id"]
-            payload = data.get("payload", {})
+            original_input = data.get("input", "")
             
             # "Process" the input by appending " Proceeded"
-            original_input = payload.get("input", "")
+            # original_input = payload.get("input", "")
             
             # Place for AI logic
             processed_text = await ai_logic_here(original_input)
